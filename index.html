@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>Gamedev Phaser Workshop - lesson 01: Initialize the framework</title>
+    <style>
+      * {
+        padding: 0;
+        margin: 0;
+      }
+    </style>
+    <script src="phaser.min.js"></script>
+  </head>
+  <body>
+    <script>
+      // 创建一个Phaser游戏实例
+      // Phaser.CANVAS: 渲染模式，这里使用Canvas
+      const game = new Phaser.Game(480, 320, Phaser.CANVAS, null, {
+        // 游戏的三个核心函数，分别用于预加载资源、创建游戏对象和更新游戏状态
+        preload, create, update,
+      });
+
+      // 定义球对象变量
+      let ball;
+      // 定义球拍对象变量
+      let paddle;
+      // 定义砖块变量
+      let bricks;
+      let newBrick;
+      let brickInfo;
+      // 定义分数文本
+      let scoreText;
+      let score = 0;
+      // 定义生命值文本
+      let lives = 3;
+      let livesText;
+      let lifeLostText;
+      // 定义按钮
+      let playing = false;
+      let startButton;
+
+      // 预加载资源函数，用于加载游戏所需的资源
+      function preload() {
+        // 设置缩放模式为SHOW_ALL，这样游戏会尽可能填满整个浏览器窗口，同时保持宽高比
+        game.scale.scaleMode = Phaser.ScaleManager.SHOW_ALL;
+        // 设置游戏画布在水平方向上居中对齐
+        game.scale.pageAlignHorizontally = true;
+        // 设置游戏画布在垂直方向上居中对齐
+        game.scale.pageAlignVertically = true;
+        // 添加自定义画布背景颜色
+        game.stage.backgroundColor = '#eee';
+        // 加载球的图像
+        game.load.image("ball", "img/ball.png");
+        // 加载球拍图像
+        game.load.image("paddle", "img/paddle.png");
+        // 加载砖块图像
+        game.load.image("brick", "img/brick.png");
+        // 加载球动画
+        game.load.spritesheet("ball", "img/wobble.png", 20, 20);
+        // 加载按钮
+        game.load.spritesheet("button", "img/button.png", 120, 40);
+      }
+        
+      // 创建游戏对象函数，用于初始化游戏对象
+      function create() {
+        // 初始化Arcade Physics物理引擎
+        game.physics.startSystem(Phaser.Physics.ARCADE);
+        // 创建球对象并打印
+        ball = game.add.sprite(game.world.width * 0.5, game.world.height - 25, "ball");
+        // 定义球动画
+        ball.animations.add("wobble", [0, 1, 0, 2, 0, 1, 0, 2, 0], 24);
+        // 设置球的位置
+        ball.anchor.set(0.5);
+        // 启用球的物理引擎
+        game.physics.enable(ball, Phaser.Physics.ARCADE);
+        // 设置球的碰撞检测边界
+        ball.body.collideWorldBounds = true;
+        // 设置球的碰撞检测反弹系数
+        ball.body.bounce.set(1);
+        // 禁用球与屏幕下边界碰撞
+        game.physics.arcade.checkCollision.down = false;
+        ball.checkWorldBounds = true;
+        // 为球对象添加了一个事件监听器，当球离开游戏世界时，会执行回调函数。
+        // 当球超出屏幕边界时，触发事件
+        ball.events.onOutOfBounds.add(ballLeaveScreen, this);
+
+        // 创建球拍对象并打印
+        paddle = game.add.sprite(game.world.width * 0.5,game.world.height - 5,"paddle",);
+        // 设置球拍的位置
+        paddle.anchor.set(0.5, 1);
+        // 启用球拍的物理引擎
+        game.physics.enable(paddle, Phaser.Physics.ARCADE);
+        // 固定球拍的位置
+        paddle.body.immovable = true;
+
+        // 绘制砖块函数
+        initBricks();
+
+        // 定义文本样式
+        textStyle = { font: "18px Arial", fill: "#0095DD" };
+        // 将分数文本添加到游戏显示
+        scoreText = game.add.text(5, 5, "Points: 0", textStyle);
+        // 定义生命值文本
+        livesText = game.add.text(game.world.width - 5, 5, `Lives: ${lives}`, textStyle);
+        // 设置生命值文本的对齐方式为右对齐
+        livesText.anchor.set(1, 0);
+        // 定义生命丢失提示文本
+        lifeLostText = game.add.text(game.world.width * 0.5,game.world.height * 0.5,"Life lost, click to continue",textStyle, );
+        // 设置生命丢失提示文本的对齐方式为居中对齐
+        lifeLostText.anchor.set(0.5);
+        // 隐藏生命丢失提示文本，初始状态下不显示生命丢失的提示信息
+        lifeLostText.visible = false;
+
+        // 添加按钮
+        startButton = game.add.button(
+          game.world.width * 0.5,
+          game.world.height * 0.5,
+          "button",
+          // 当按钮被点击时，调用startGame函数
+          startGame,
+          this,
+          1,
+          0,
+          2,
+        );
+        // 设置按钮的对齐方式为居中对齐
+        startButton.anchor.set(0.5);
+      }
+
+      // 更新游戏状态函数，用于更新游戏状态
+      function update() {
+        // 检测球与球拍是否碰撞
+        game.physics.arcade.collide(ball, paddle, ballHitPaddle);
+        // 检测球与砖块是否碰撞
+        game.physics.arcade.collide(ball, bricks, ballHitBrick);
+        // 设置球拍的默认位置为屏幕的中间
+        // 比赛开始后，球拍跟随鼠标移动
+        if(playing){
+          paddle.x = game.input.x || game.world.width * 0.5;
+        }
+      }
+
+      // 初始化砖块函数
+      function initBricks() {
+        brickInfo = {
+            width: 50,
+            height: 20,
+            count: {
+                row: 3,
+                col: 7,
+            },
+            offset: {
+                top: 50,
+                left: 60,
+            },
+            padding: 10,
+         };
+         // 创建砖块组
+         bricks = game.add.group();
+         // 遍历砖块组，创建砖块对象
+         for (let c = 0; c < brickInfo.count.col; c++) {
+            for (let r = 0; r < brickInfo.count.row; r++) {
+                // 计算砖块的位置
+                const brickX =c * (brickInfo.width + brickInfo.padding) + brickInfo.offset.left;
+                const brickY =r * (brickInfo.height + brickInfo.padding) + brickInfo.offset.top;
+                newBrick = game.add.sprite(brickX, brickY, "brick");
+                game.physics.enable(newBrick, Phaser.Physics.ARCADE);
+                // 设置砖块不可移动
+                newBrick.body.immovable = true;
+                newBrick.anchor.set(0.5);
+                bricks.add(newBrick);
+              }     
+            }
+          }
+
+
+      // 球与砖块的碰撞检测函数
+      function ballHitBrick(ball, brick) {
+        // 创建一个补间动画，将砖块缩放为0
+        const killTween = game.add.tween(brick.scale);
+        killTween.to({ x: 0, y: 0 }, 200, Phaser.Easing.Linear.None);
+        killTween.onComplete.addOnce(() => {
+          brick.kill();
+        }, this);
+        killTween.start();
+        // 增加分数
+        score += 10;
+        // 更新并显示当前分数
+        scoreText.setText(`Points: ${score}`);
+
+        // 检查游戏结束条件
+
+        // 初始化一个变量来计数还存活的砖块数量
+        let count_alive = 0;
+        // 遍历砖块组，检查每个砖块是否存活
+        for (let i = 0; i < bricks.children.length; i++) {
+          if (bricks.children[i].alive) {
+            count_alive++;
+          }
+        }
+        // 如果所有砖块都已被消灭，则显示胜利信息并重新加载游戏
+        if (count_alive === 0) {
+          alert("You won the game, congratulations!");
+          location.reload();
+        }
+      }
+      // 球离开屏幕的函数
+      function ballLeaveScreen() {
+        // 减少生命值
+        lives--;
+        // 更新并显示当前生命值
+        if (lives) {
+          livesText.setText(`Lives: ${lives}`);
+          lifeLostText.visible = true;
+          ball.reset(game.world.width * 0.5, game.world.height - 25);
+          paddle.reset(game.world.width * 0.5, game.world.height - 5);
+          game.input.onDown.addOnce(() => {
+            lifeLostText.visible = false;
+            ball.body.velocity.set(150, -150);
+          }, this);
+        } 
+        // 如果生命值为0，则显示游戏结束信息并重新加载游戏
+        else {
+          alert("You lost, game over!");
+          location.reload();
+        }
+      }
+      
+      // 球与球拍碰撞检测函数
+      function ballHitPaddle(ball, paddle) {
+        // 当球与球拍碰撞时，播放动画
+        ball.animations.play("wobble");
+        // 根据球拍的位置，改变球的速度方向
+        ball.body.velocity.x = -5 * (paddle.x - ball.x);
+      }
+
+      // 游戏开始函数
+      function startGame() {
+        startButton.destroy();
+        ball.body.velocity.set(150, -150);
+        playing = true;
+      }
+
+    </script>
+  </body>
+</html>
